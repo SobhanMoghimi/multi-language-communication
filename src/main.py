@@ -20,7 +20,7 @@ ffi.cdef("""
 """)
 
 # Load Rust shared library
-C = ffi.dlopen("/home/sobhan/codes/sobhan/repos/zahra/multi-language-communication/rust_core/target/release/librust_core.so")
+C = ffi.dlopen("../rust_core/target/release/librust_core.so")
 
 def call_function(function_call_command, function_location, function_name, args):
     call_uuid = str(uuid.uuid4())
@@ -50,10 +50,10 @@ def call_function(function_call_command, function_location, function_name, args)
 
 if __name__ == "__main__":
     # Example usage: call the add function
-    # result = call_function("add", {"a": 5, "b": 3})
+    # result = call_function("node", "subtract.js", "subtract", {"a": 5, "b": 3})
     # print(f"Add Result: {result}")
 
-    # Example usage: call the subtract function
+    # Example usage: call the add function
     try:
         result = call_function("python3", "add.py", "add", {"a": 10, "b": 4})
         print(f"Subtract Result: {result}")

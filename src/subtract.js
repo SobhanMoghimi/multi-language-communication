@@ -3,7 +3,7 @@ const ref = require('ref-napi');
 const Struct = require('ref-struct-di')(ref);
 
 // Define the Rust core library interface
-const RustCore = ffi.Library('./librust_core.so', {
+const RustCore = ffi.Library('/home/sobhan/codes/sobhan/repos/zahra/multi-language-communication/rust_core/target/release/librust_core.so', {
     'read_from_input_queue': ['pointer', []],
     'remove_from_input_queue': ['int', ['string']],
     'write_to_output_queue': ['int', ['string']]

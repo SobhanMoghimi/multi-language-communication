@@ -13,3 +13,5 @@ rust_core/**/*.rs.bk
 
 # MSVC Windows builds of rustc generate these, which store debugging information
 rust_core/*.pdb
+
+.idea/
