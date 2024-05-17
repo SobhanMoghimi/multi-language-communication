@@ -3,7 +3,7 @@ import uuid
 import os
 import subprocess
 import cffi
-
+import logging
 from time import sleep
 
 ffi = cffi.FFI()
@@ -22,7 +22,7 @@ ffi.cdef("""
 # Load Rust shared library
 C = ffi.dlopen("/home/sobhan/codes/sobhan/repos/zahra/multi-language-communication/rust_core/target/release/librust_core.so")
 
-def call_function(function_name, args):
+def call_function(function_call_command, function_location, function_name, args):
     call_uuid = str(uuid.uuid4())
     function_call = {
         "function": function_name,
@@ -32,14 +32,11 @@ def call_function(function_name, args):
     C.write_to_input_queue(call_uuid.encode('utf-8'), json.dumps(function_call).encode('utf-8'))
     
     # Run the corresponding function program
-    if function_name == "add":
-        subprocess.Popen(["./add.c"])
-    elif function_name == "subtract":
-        subprocess.Popen(["node", "subtract.js"])
+    subprocess.call([function_call_command, function_location])
 
     # Wait for result
     result = None
-    while result is None:
+    for i in range(0, 100):
         result_ptr = C.read_from_output_queue()
         if result_ptr:
             result_str = ffi.string(result_ptr).decode('utf-8')
@@ -47,8 +44,9 @@ def call_function(function_name, args):
             if result_data['uuid'] == call_uuid:
                 result = result_data['result']
                 C.remove_from_output_queue(call_uuid.encode('utf-8'))
+                return result
         sleep(0.1)
-    return result
+    raise TimeoutError(f"Timeout function '{function_name}' call. Exisitng...")
 
 if __name__ == "__main__":
     # Example usage: call the add function
@@ -56,5 +54,8 @@ if __name__ == "__main__":
     # print(f"Add Result: {result}")
 
     # Example usage: call the subtract function
-    result = call_function("subtract", {"a": 10, "b": 4})
-    print(f"Subtract Result: {result}")
+    try:
+        result = call_function("python3", "add.py", "add", {"a": 10, "b": 4})
+        print(f"Subtract Result: {result}")
+    except Exception as e:
+        print(e)
