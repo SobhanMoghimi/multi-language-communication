@@ -12,4 +12,4 @@ futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.15"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"ls target/release/librust_core.so
+serde_json = "1.0"
