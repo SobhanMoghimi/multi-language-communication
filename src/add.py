@@ -1,7 +1,6 @@
 import json
 import cffi
 import time
-import sys
 import logging
 import uuid
 
@@ -9,18 +8,23 @@ ffi = cffi.FFI()
 
 # Define C functions from Rust
 ffi.cdef("""
-    char* read_from_input_queue();
-    int write_to_input_queue(const char* uuid, const char* data);
-    int remove_from_input_queue(const char* uuid);
-    char* read_from_output_queue();
-    int write_to_output_queue(const char* uuid, const char* data);
-    int remove_from_output_queue(const char* uuid);
-    void clear_shared_memory();
+    int create_shared_memory();
+    int write_to_input_queue(int shm_fd, const char* uuid, const char* data);
+    char* read_from_input_queue(int shm_fd);
+    int remove_from_input_queue(int shm_fd, const char* uuid);
+    int write_to_output_queue(int shm_fd, const char* uuid, const char* data);
+    char* read_from_output_queue(int shm_fd);
+    int remove_from_output_queue(int shm_fd, const char* uuid);
+    int clear_shared_memory(int shm_fd);
 """)
 
 # Load Rust shared library
 C = ffi.dlopen("../rust_core/target/release/librust_core.so")
 
+# Create shared memory and get the file descriptor
+shm_fd = C.create_shared_memory()
+if shm_fd == -1:
+    raise Exception("Failed to create shared memory")
 
 def process_message(message):
     data = json.loads(message)
@@ -46,32 +50,32 @@ def process_message(message):
     }
 
     response_str = json.dumps(response)
-    C.write_to_output_queue(uuid.encode('utf-8'), response_str.encode('utf-8'))
-    C.remove_from_input_queue(uuid.encode('utf-8'))
+    C.write_to_output_queue(shm_fd, uuid.encode('utf-8'), response_str.encode('utf-8'))
+    C.remove_from_input_queue(shm_fd, uuid.encode('utf-8'))
 
 def main():
     start_time = time.time()
 
-    call_uuid = str(uuid.uuid4())
-    function_call = {
-        "function": "add",
-        "uuid": call_uuid,
-        "args": {"a": 10, "b": 4}
-    }
-    C.write_to_input_queue(call_uuid.encode('utf-8'), json.dumps(function_call).encode('utf-8'))
+    # call_uuid = str(uuid.uuid4())
+    # function_call = {
+    #     "function": "add",
+    #     "uuid": call_uuid,
+    #     "args": {"a": 10, "b": 4}
+    # }
+    # C.write_to_input_queue(shm_fd, call_uuid.encode('utf-8'), json.dumps(function_call).encode('utf-8'))
 
-    print(f"Written to Queue!")
+    # print(f"Written to Queue!")
 
     while True:
         if time.time() - start_time > 10:
             print("Timeout waiting for message")
             break
-        message_ptr = C.read_from_input_queue()
+        message_ptr = C.read_from_input_queue(shm_fd)
         print(message_ptr)
         if message_ptr:
             message = ffi.string(message_ptr).decode('utf-8')
+            logging.info(f"Code add.py recieved {message}!")
             process_message(message)
-
         time.sleep(0.1)
 
 if __name__ == "__main__":
