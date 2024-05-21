@@ -3,6 +3,12 @@ import cffi
 import time
 import logging
 import uuid
+from time import sleep
+
+
+logging.basicConfig()
+logging.getLogger().setLevel(logging.ERROR)
+
 
 ffi = cffi.FFI()
 
@@ -71,11 +77,12 @@ def main():
             print("Timeout waiting for message")
             break
         message_ptr = C.read_from_input_queue(shm_fd)
-        print(message_ptr)
         if message_ptr:
             message = ffi.string(message_ptr).decode('utf-8')
             logging.info(f"Code add.py recieved {message}!")
+            logging.info(f"message is : {message}")
             process_message(message)
+            break
         time.sleep(0.1)
 
 if __name__ == "__main__":

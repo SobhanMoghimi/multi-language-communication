@@ -4,11 +4,12 @@ import os
 import subprocess
 import cffi
 import logging
+import multiprocessing
 from time import sleep
 
 
 logging.basicConfig()
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.ERROR)
 
 ffi = cffi.FFI()
 
@@ -32,7 +33,9 @@ shm_fd = C.create_shared_memory()
 if shm_fd == -1:
     raise Exception("Failed to create shared memory")
 
-def call_function(function_call_command, function_location, function_name, args):
+def call_function(call_function_args):
+    function_call_command, function_location, function_name, args = call_function_args
+
     call_uuid = str(uuid.uuid4())
     function_call = {
         "function": function_name,
@@ -42,11 +45,12 @@ def call_function(function_call_command, function_location, function_name, args)
     C.write_to_input_queue(shm_fd, call_uuid.encode('utf-8'), json.dumps(function_call).encode('utf-8'))
    
     message_ptr = C.read_from_input_queue(shm_fd)
-    print(message_ptr)
+    # print(message_ptr)
     if message_ptr:
         message = ffi.string(message_ptr).decode('utf-8')
         logging.info(f"Code add.py recieved {message}!")    # Run the corresponding function program
-    
+        logging.info(f"message is : {message}")
+
     subprocess.call([function_call_command, function_location])
 
     # Wait for result
@@ -66,10 +70,37 @@ def call_function(function_call_command, function_location, function_name, args)
 if __name__ == "__main__":
     # Example usage: call the add function
     try:
-        result = call_function("python3", "add.py", "add", {"a": 10, "b": 4})
+        result = call_function(["python3", "add.py", "add", {"a": 10, "b": 4}])
         print(f"Add Result: {result}")
+
+        result = call_function(["python3", "add.py", "add", {"a": 12, "b": 5}])
+        print(f"Add Result: {result}")
+
+        result = call_function(["python3", "add.py", "add", {"a": 9, "b": 13}])
+        print(f"Add Result: {result}")
+
+
+        # multiprocessing pool object 
+        pool = multiprocessing.Pool() 
+    
+        # pool object with number of element 
+        pool = multiprocessing.Pool(processes=4) 
+    
+        # input list 
+        inputs = [["python3", "add.py", "add", {"a": 1234, "b": 0}],
+                  ["python3", "add.py", "add", {"a": 2, "b": 123}],
+                  ["python3", "add.py", "add", {"a": 10, "b": 75}]] 
+    
+        # map the function to the list and pass 
+        # function and input list as arguments 
+        outputs = pool.map(call_function, inputs) 
+    
+        # Print input list 
+        print("Input: {}".format(inputs)) 
+    
+        # Print output list 
+        print("Output: {}".format(outputs)) 
+
     except Exception as e:
         print(e)
 
-    # Clear shared memory before exiting
-    C.clear_shared_memory(shm_fd)

@@ -8,13 +8,13 @@ use std::str;
 const SHM_NAME: &str = "/my_shared_memory";
 const SHM_SIZE: usize = 4096 * 2; // Adjusted size for both input and output queues
 const MAX_ENTRIES: usize = 100;
-const ENTRY_SIZE: usize = 128;
+const ENTRY_SIZE: usize = 256;
 
 // Define the structure of a queue entry
 #[repr(C)]
 struct QueueEntry {
-    uuid: [u8; 36],  // UUID as a fixed-size array
-    message: [u8; ENTRY_SIZE],  // Message as a fixed-size array
+    uuid: [u8; 36+1],  // UUID as a fixed-size array
+    message: [u8; ENTRY_SIZE+1],  // Message as a fixed-size array
 }
 
 // Function to create shared memory
@@ -23,10 +23,12 @@ pub extern "C" fn create_shared_memory() -> c_int {
     unsafe {
         let shm_fd = shm_open(CString::new(SHM_NAME).unwrap().as_ptr(), O_CREAT | O_RDWR, 0o666);
         if shm_fd == -1 {
+            eprintln!("Failed to open shared memory");
             return -1;
         }
 
         if ftruncate(shm_fd, SHM_SIZE as i64) == -1 {
+            eprintln!("Failed to truncate shared memory");
             shm_unlink(CString::new(SHM_NAME).unwrap().as_ptr());
             return -1;
         }
@@ -44,11 +46,17 @@ unsafe fn write_to_queue(ptr: *mut u8, uuid: *const c_char, data: *const c_char)
     for entry in queue.iter_mut() {
         if entry.uuid[0] == 0 {
             // Clear the entry before copying
-            entry.uuid = [0; 36];
-            entry.message = [0; ENTRY_SIZE];
+            entry.uuid = [0; 36+1];
+            entry.message = [0; ENTRY_SIZE+1];
             
-            entry.uuid[..uuid_str.len()].copy_from_slice(uuid_str.as_bytes());
-            entry.message[..data_str.len()].copy_from_slice(data_str.as_bytes());
+            // Copy the UUID and message, including null terminators
+            ptr::copy_nonoverlapping(uuid, entry.uuid.as_mut_ptr() as *mut c_char, uuid_str.len());
+            entry.uuid[uuid_str.len()] = 0; // null-terminate
+            
+            ptr::copy_nonoverlapping(data, entry.message.as_mut_ptr() as *mut c_char, data_str.len());
+            entry.message[data_str.len()] = 0; // null-terminate
+            
+            // println!("Write: UUID={} Message={}", uuid_str, data_str);
             break;
         }
     }
@@ -61,12 +69,28 @@ unsafe fn read_from_queue(ptr: *const u8) -> *mut c_char {
     let entry = queue.iter().find(|entry| entry.uuid[0] != 0);
 
     if let Some(entry) = entry {
-        let message = CStr::from_bytes_with_nul(&entry.message).unwrap_or_default();
-        return CString::new(message.to_bytes()).unwrap().into_raw();
+        let message = CStr::from_bytes_with_nul_unchecked(&entry.message);
+        // println!("Read: UUID={} Message={}", String::from_utf8_lossy(&entry.uuid), message.to_str().unwrap_or(""));
+        return CString::new(message.to_bytes()).unwrap_unchecked().into_raw();
     } else {
         return ptr::null_mut();
     }
 }
+
+// Function to remove from a queue in shared memory
+// unsafe fn remove_from_queue(ptr: *mut u8, uuid: *const c_char) -> c_int {
+//     let queue: &mut [QueueEntry] = slice::from_raw_parts_mut(ptr as *mut QueueEntry, MAX_ENTRIES);
+//     let uuid_str = CStr::from_ptr(uuid).to_str().unwrap();
+
+//     for entry in queue.iter_mut() {
+//         if entry.uuid.starts_with(uuid_str.as_bytes()) {
+//             entry.uuid = [0; 36];
+//             entry.message = [0; ENTRY_SIZE];
+//             break;
+//         }
+//     }
+//     0
+// }
 
 // Function to remove from a queue in shared memory
 unsafe fn remove_from_queue(ptr: *mut u8, uuid: *const c_char) -> c_int {
@@ -75,8 +99,9 @@ unsafe fn remove_from_queue(ptr: *mut u8, uuid: *const c_char) -> c_int {
 
     for entry in queue.iter_mut() {
         if entry.uuid.starts_with(uuid_str.as_bytes()) {
-            entry.uuid = [0; 36];
-            entry.message = [0; ENTRY_SIZE];
+            entry.uuid = [0; 36+1];
+            entry.message = [0; ENTRY_SIZE+1];
+            // println!("Removed: UUID={}", uuid_str);
             break;
         }
     }
@@ -105,7 +130,7 @@ pub extern "C" fn read_from_input_queue(shm_fd: c_int) -> *mut c_char {
         }
         let result = read_from_queue(ptr as *const u8);
         munmap(ptr, SHM_SIZE);
-        result
+        return result;
     }
 }
 
@@ -183,8 +208,8 @@ pub extern "C" fn clear_shared_memory(shm_fd: c_int) -> c_int {
         let output_queue: &mut [QueueEntry] = slice::from_raw_parts_mut(ptr.add(SHM_SIZE / 2) as *mut QueueEntry, MAX_ENTRIES);
 
         for entry in input_queue.iter_mut().chain(output_queue.iter_mut()) {
-            entry.uuid = [0; 36];
-            entry.message = [0; ENTRY_SIZE];
+            entry.uuid = [0; 36+1];
+            entry.message = [0; ENTRY_SIZE+1];
         }
 
         munmap(ptr, SHM_SIZE);
