@@ -5,7 +5,7 @@ use std::slice;
 use std::str;
 
 // Define constants
-const SHM_NAME: &str = "/my_shared_memory";
+const SHM_NAME: &str = "/my_shared_memoryy";
 const SHM_SIZE: usize = 4096 * 2; // Adjusted size for both input and output queues
 const MAX_ENTRIES: usize = 100;
 const ENTRY_SIZE: usize = 256;
