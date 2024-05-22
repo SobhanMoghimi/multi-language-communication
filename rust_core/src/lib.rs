@@ -11,7 +11,6 @@ use std::mem;
 
 // Define constants
 const SHM_NAME: &str = "/my_shared_memory";
-const SHM_SIZE: usize = 4096 * 2; // Adjusted size for both input and output queues
 const MAX_ENTRIES: usize = 100;
 const ENTRY_SIZE: usize = 256;
 
@@ -107,11 +106,23 @@ unsafe fn read_from_queue(queue: &[QueueEntry]) -> *mut c_char {
     let entry = queue.iter().find(|entry| entry.uuid[0] != 0);
 
     if let Some(entry) = entry {
-        let message = CStr::from_bytes_with_nul_unchecked(&entry.message);
-        println!("Read: UUID={} Message={}", String::from_utf8_lossy(&entry.uuid), message.to_str().unwrap_or(""));
-        return CString::new(message.to_bytes()).unwrap_unchecked().into_raw();
+        // Ensure the message is null-terminated
+        let message_len = entry.message.iter().position(|&x| x == 0).unwrap_or(ENTRY_SIZE);
+        let message = &entry.message[..message_len];
+        
+        let message_cstr = match CString::new(message) {
+            Ok(cstr) => cstr,
+            Err(_) => {
+                eprintln!("Failed to convert message to CString");
+                return ptr::null_mut();
+            }
+        };
+
+        println!("Read: UUID={} Message={}", String::from_utf8_lossy(&entry.uuid), message_cstr.to_str().unwrap_or(""));
+        message_cstr.into_raw()
     } else {
-        return ptr::null_mut();
+        eprintln!("No valid entry found in the queue");
+        ptr::null_mut()
     }
 }
 
@@ -127,7 +138,6 @@ unsafe fn remove_from_queue(queue: &mut [QueueEntry], uuid: *const c_char) -> c_
             return 0; // Indicate success
         }
     }
-
     -1 // Indicate failure (UUID not found)
 }
 
@@ -156,9 +166,68 @@ pub extern "C" fn write_to_input_queue(shm_fd: c_int, uuid: *const c_char, data:
     }
 }
 
+// Function to write to output queue in shared memory
+#[no_mangle]
+pub extern "C" fn write_to_output_queue(shm_fd: c_int, uuid: *const c_char, data: *const c_char) -> c_int {
+    unsafe {
+        let ptr = mmap(ptr::null_mut(), mem::size_of::<SharedMemory>(), PROT_WRITE, MAP_SHARED, shm_fd, 0);
+        if ptr == MAP_FAILED {
+            eprintln!("Failed to map shared memory");
+            return -1;
+        }
+
+        let shared_memory: &mut SharedMemory = &mut *(ptr as *mut SharedMemory);
+
+        pthread_mutex_lock(&mut shared_memory.mutex);
+        sem_wait(&mut shared_memory.semaphore);
+
+        // Write to the second half of the shared memory (output queue)
+        let result = write_to_queue(&mut shared_memory.output_queue, uuid, data);
+
+        sem_post(&mut shared_memory.semaphore);
+        pthread_mutex_unlock(&mut shared_memory.mutex);
+
+        munmap(ptr, mem::size_of::<SharedMemory>());
+        result
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn read_from_input_queue(shm_fd: c_int) -> *mut c_char {
     unsafe {
+        println!("Mapping shared memory to read from input queue...");
+        let ptr = mmap(ptr::null_mut(), mem::size_of::<SharedMemory>(), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+        if ptr == MAP_FAILED {
+            eprintln!("Failed to map shared memory");
+            return ptr::null_mut();
+        }
+
+        let shared_memory: &SharedMemory = &*(ptr as *const SharedMemory);
+
+        // Lock the mutex
+        let mutex_ptr = &shared_memory.mutex as *const pthread_mutex_t as *mut pthread_mutex_t;
+        println!("Locking mutex for reading input queue...");
+        pthread_mutex_lock(mutex_ptr);
+
+        // Wait on the semaphore
+        let sem_ptr = &shared_memory.semaphore as *const sem_t as *mut sem_t;
+        println!("Waiting on semaphore for reading input queue...");
+        sem_wait(sem_ptr);
+
+        // Read from the input queue
+        println!("Reading from input queue...");
+        let result = read_from_queue(&shared_memory.input_queue);
+
+        // Post the semaphore
+        println!("Posting semaphore after reading input queue...");
+        sem_post(sem_ptr);
+
+        // Unlock the mutex
+        println!("Unlocking mutex after reading input queue...");
+        pthread_mutex_unlock(mutex_ptr);
+
+        munmap(ptr, mem::size_of::<SharedMemory>());
+
         let ptr = mmap(ptr::null_mut(), mem::size_of::<SharedMemory>(), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
         if ptr == MAP_FAILED {
             eprintln!("Failed to map shared memory");
@@ -175,7 +244,7 @@ pub extern "C" fn read_from_input_queue(shm_fd: c_int) -> *mut c_char {
         let sem_ptr = &shared_memory.semaphore as *const sem_t as *mut sem_t;
         sem_wait(sem_ptr);
 
-        // Read from the input queue
+        // Read from the output queue
         let result = read_from_queue(&shared_memory.input_queue);
 
         // Post the semaphore
@@ -185,12 +254,21 @@ pub extern "C" fn read_from_input_queue(shm_fd: c_int) -> *mut c_char {
         pthread_mutex_unlock(mutex_ptr);
 
         munmap(ptr, mem::size_of::<SharedMemory>());
+
+        // Check if result is null
+        if result.is_null() {
+            eprintln!("Read from queue returned null");
+        } else {
+            let message = CStr::from_ptr(result).to_str().unwrap_or("");
+            println!("Read from input queue: {}", message);
+        }
         result
     }
 }
 
 
-// Function to remove message from input queue by UUID in shared memory
+
+
 #[no_mangle]
 pub extern "C" fn read_from_output_queue(shm_fd: c_int) -> *mut c_char {
     unsafe {
@@ -220,36 +298,21 @@ pub extern "C" fn read_from_output_queue(shm_fd: c_int) -> *mut c_char {
         pthread_mutex_unlock(mutex_ptr);
 
         munmap(ptr, mem::size_of::<SharedMemory>());
-        result
-    }
-}
 
-
-// Function to write to output queue in shared memory
-#[no_mangle]
-pub extern "C" fn write_to_output_queue(shm_fd: c_int, uuid: *const c_char, data: *const c_char) -> c_int {
-    unsafe {
-        let ptr = mmap(ptr::null_mut(), mem::size_of::<SharedMemory>(), PROT_WRITE, MAP_SHARED, shm_fd, 0);
-        if ptr == MAP_FAILED {
-            eprintln!("Failed to map shared memory");
-            return -1;
+        // Check if result is null
+        if result.is_null() {
+            eprintln!("Read from queue returned null");
+        } else {
+            let message = CStr::from_ptr(result).to_str().unwrap_or("");
+            println!("Read from output queue: {}", message);
         }
 
-        let shared_memory: &mut SharedMemory = &mut *(ptr as *mut SharedMemory);
-
-        pthread_mutex_lock(&mut shared_memory.mutex);
-        sem_wait(&mut shared_memory.semaphore);
-
-        // Write to the second half of the shared memory (output queue)
-        let result = write_to_queue(&mut shared_memory.output_queue, uuid, data);
-
-        sem_post(&mut shared_memory.semaphore);
-        pthread_mutex_unlock(&mut shared_memory.mutex);
-
-        munmap(ptr, mem::size_of::<SharedMemory>());
         result
     }
 }
+
+
+
 
 #[no_mangle]
 pub extern "C" fn remove_from_output_queue(shm_fd: c_int, uuid: *const c_char) -> c_int {
@@ -267,6 +330,31 @@ pub extern "C" fn remove_from_output_queue(shm_fd: c_int, uuid: *const c_char) -
 
         // Remove from the second half of the shared memory (output queue)
         let result = remove_from_queue(&mut shared_memory.output_queue, uuid);
+
+        sem_post(&mut shared_memory.semaphore);
+        pthread_mutex_unlock(&mut shared_memory.mutex);
+
+        munmap(ptr, mem::size_of::<SharedMemory>());
+        result
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn remove_from_input_queue(shm_fd: c_int, uuid: *const c_char) -> c_int {
+    unsafe {
+        let ptr = mmap(ptr::null_mut(), mem::size_of::<SharedMemory>(), PROT_WRITE, MAP_SHARED, shm_fd, 0);
+        if ptr == MAP_FAILED {
+            eprintln!("Failed to map shared memory");
+            return -1;
+        }
+
+        let shared_memory: &mut SharedMemory = &mut *(ptr as *mut SharedMemory);
+
+        pthread_mutex_lock(&mut shared_memory.mutex);
+        sem_wait(&mut shared_memory.semaphore);
+
+        // Remove from the second half of the shared memory (output queue)
+        let result = remove_from_queue(&mut shared_memory.input_queue, uuid);
 
         sem_post(&mut shared_memory.semaphore);
         pthread_mutex_unlock(&mut shared_memory.mutex);

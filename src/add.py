@@ -3,6 +3,7 @@ import cffi
 import time
 import logging
 import uuid
+import sys
 from time import sleep
 
 
@@ -72,8 +73,10 @@ def main():
 
     # print(f"Written to Queue!")
 
+    print(f"shm_fd is {shm_fd}")
+
     while True:
-        if time.time() - start_time > 10:
+        if time.time() - start_time > 3:
             print("Timeout waiting for message")
             break
         message_ptr = C.read_from_input_queue(shm_fd)
@@ -81,8 +84,12 @@ def main():
             message = ffi.string(message_ptr).decode('utf-8')
             logging.info(f"Code add.py recieved {message}!")
             logging.info(f"message is : {message}")
-            process_message(message)
-            break
+            try:
+                process_message(message)
+                return 
+            except Exception as e:
+                logging.error(f"Caught exception processing message {message}. The exception was: {e}")
+                return 
         time.sleep(0.1)
 
 if __name__ == "__main__":
