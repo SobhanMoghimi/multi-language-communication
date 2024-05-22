@@ -63,22 +63,7 @@ def process_message(message):
 def main():
     start_time = time.time()
 
-    # call_uuid = str(uuid.uuid4())
-    # function_call = {
-    #     "function": "add",
-    #     "uuid": call_uuid,
-    #     "args": {"a": 10, "b": 4}
-    # }
-    # C.write_to_input_queue(shm_fd, call_uuid.encode('utf-8'), json.dumps(function_call).encode('utf-8'))
-
-    # print(f"Written to Queue!")
-
-    print(f"shm_fd is {shm_fd}")
-
     while True:
-        if time.time() - start_time > 3:
-            print("Timeout waiting for message")
-            break
         message_ptr = C.read_from_input_queue(shm_fd)
         if message_ptr:
             message = ffi.string(message_ptr).decode('utf-8')
@@ -86,10 +71,8 @@ def main():
             logging.info(f"message is : {message}")
             try:
                 process_message(message)
-                return 
             except Exception as e:
                 logging.error(f"Caught exception processing message {message}. The exception was: {e}")
-                return 
         time.sleep(0.1)
 
 if __name__ == "__main__":
