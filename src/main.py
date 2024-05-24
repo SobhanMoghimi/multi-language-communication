@@ -6,7 +6,7 @@ import cffi
 import logging
 import multiprocessing
 from time import sleep
-
+from datetime import datetime
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
@@ -71,8 +71,8 @@ def call_function(call_function_args):
 if __name__ == "__main__":
     # Example usage: call the add function
     try:
-        print(f"shm_fd is {shm_fd}")
-
+        start_time = datetime.now()
+        
         result = call_function(["python3", "add.py", "add", {"a": 10, "b": 4}])
         print(f"Add Result: {result}")
 
@@ -83,12 +83,8 @@ if __name__ == "__main__":
         print(f"Add Result: {result}")
 
 
-        # multiprocessing pool object 
         pool = multiprocessing.Pool() 
-    
-        # pool object with number of element 
         pool = multiprocessing.Pool(processes=6) 
-    
         # input list 
         inputs = [["python3", "add.py", "add", {"a": 1234, "b": 0}],
                   ["python3", "add.py", "add", {"a": 2, "b": 123}],
@@ -96,18 +92,14 @@ if __name__ == "__main__":
                   ["python3", "add.py", "add", {"a": 3333, "b": 1111}],
                   ["python3", "add.py", "add", {"a": 101013, "b": 0}],
                   ["python3", "add.py", "add", {"a": 109, "b": 85}]] 
-    
-        # map the function to the list and pass 
-        # function and input list as arguments 
         outputs = pool.map(call_function, inputs) 
-    
         # Print input list 
         print("Input: {}".format(inputs)) 
-    
         # Print output list 
         print("Output: {}".format(outputs)) 
 
-        # C.clear_shared_memory(shm_fd)
+        print(f"The to total time taken was {datetime.now()-start_time}")
+        C.clear_shared_memory(shm_fd)
     except Exception as e:
         print(e)
 
