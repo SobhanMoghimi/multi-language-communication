@@ -1,16 +1,58 @@
-# multi-language-communication
-A project to run multiple languages in a system
+# Multi-Language Communication
+
+This project facilitates communication between applications written in different programming languages using shared memory. It demonstrates an efficient method for message passing between Python and JavaScript, with a Rust-based interface managing the communication.
+
+## Features
+
+- **Cross-language communication**: Seamless interaction between Python and JavaScript.
+- **Shared memory queues**: Efficient message passing using shared memory.
+- **Rust-based middleware**: Bridges Python and JavaScript communication.
+- **Extensible**: Adaptable for adding more languages.
+
+## Prerequisites
+
+- Python 3.x
+- Node.js 14.x or higher
+- Cargo (Rust package manager)
+
+## Installation
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/SobhanMoghimi/multi-language-communication.git
+
+2. Navigate to the project directory:
+
+   ```bash
+    cd multi-language-communication
+
+3. Install Python dependencies:
+
+    ```bash
+    pip install -r requirements.txt
+ 
+4. Install Node.js dependencies:
+
+   ```bash
+    npm install
+
+5. Build the Rust components:
+
+   ```bash
+   cargo build
+
+## Usage
+Start the Python and Node.js services:
+ 
+    npm start
 
 
-# Run codes
+Messages will be passed between the Python and JavaScript applications using the Rust middleware.
 
-To run the code for Shared Memory examples:
 
-```
-python3 src/main.py
-```
+## Contributing
+Feel free to open issues or submit pull requests to contribute to the project.
 
-In this project, we achieved a communication between a python application and a js app through shared memory.
-Further implementations can be done to test communication between other application.
-
-The communication link is written in rust and compiled. The message to a function call is made through shared memory. It's written in a queue by a caller, and the other side is a listener which listens for a call function message. When a message is seen, the code runs the function with it's parameters and writes the outputs in another queue.
+## License
+This project is licensed under the MIT License. See the LICENSE file for details.
